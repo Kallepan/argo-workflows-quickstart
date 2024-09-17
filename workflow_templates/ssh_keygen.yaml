@@ -1,0 +1,30 @@
+# Generates a new SSH key pair
+# Parameters:
+#   - name: name of the key pair
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: ssh-keygen
+spec:
+  entrypoint: ssh-keygen
+  arguments:
+    parameters:
+    - name: name
+      value: ""
+  templates:
+  - name: ssh-keygen
+    inputs:
+      parameters:
+      - name: name
+    container:
+      image: ubuntu:latest
+      command: [sh, -c]
+      args:
+      - |
+        mkdir -p /tmp/keys/
+        apt-get update && apt-get install -y openssh-client
+        ssh-keygen -t rsa -b 2048 -f /tmp/keys/{{inputs.parameters.name}} -N ""
+    outputs:
+      artifacts:
+      - name: key-pairs
+        path: /tmp/keys/

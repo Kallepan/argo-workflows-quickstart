@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: generate-ssh-key-
+spec:
+  entrypoint: generate-ssh-key
+  templates:
+    - name: generate-ssh-key
+      steps:
+        - - name: call-ssh-keygen-template
+            templateRef:
+              name: ssh-keygen
+              template: ssh-keygen
+            arguments:
+              parameters:
+                - name: name
+                  value: example
