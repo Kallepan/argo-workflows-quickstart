@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: calculator-
+spec:
+  entrypoint: calculate
+  templates:
+    - name: calculate
+      steps:
+        - - name: add-first-round
+            arguments:
+              parameters:
+                - name: a
+                  value: "1"
+                - name: b
+                  value: "2"
+            template: add
+        - - name: add-second-round
+            arguments:
+              parameters:
+                - name: a
+                  value: "{{steps.add-first-round.outputs.parameters.sum}}"
+                - name: b
+                  value: "3"
+            template: add
+        - - name: print-result
+            template: printer
+            arguments:
+              parameters:
+                - name: result
+                  value: "{{steps.add-second-round.outputs.parameters.sum}}"
+
+    - name: printer
+      container:
+        image: busybox
+        command: [echo]
+        args: ["result={{inputs.parameters.result}}"]
+      inputs:
+        parameters:
+          - name: result
+  
+    - name: add
+      inputs:
+        parameters:
+          - name: a
+          - name: b
+      outputs:
+        parameters:
+          - name: sum
+            valueFrom:
+              path: /tmp/result
+      container:
+        image: alpine:3.6
+        command: [sh, -c]
+        args: ["echo $(({{inputs.parameters.a}} + {{inputs.parameters.b}})) > /tmp/result && cat /tmp/result"]
