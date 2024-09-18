@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fastsurfer-s3
+  namespace: kite-ference
+data:
+  v1-s3-artifact-repository: |
+    s3:
+      endpoint: s3.kite.ume.de
+      bucket: kite-ference
+      # insecure: true
+      accessKeySecret:
+        name: s3-creds
+        key: accessKey
+      secretKeySecret:
+        name: s3-creds
+        key: secretKey
+---
+# This template is an example fastsurfer pipeline. It will execute two steps:
+# 1. Convert the source images from DICOM to NIFTI format
+# 2. Run the fastsurfer pipeline on the NIFTI images
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: fastsurfer-pipeline
+  namespace: kite-ference
+spec:
+  entrypoint: main
+  artifactRepositoryRef:
+    name: fastsurfer-s3
+    key: v1-s3-artifact-repository
+  volumes:
+    - name: fastsurfer-license-pv
+      secret:
+        secretName: fastsurfer-license
+  templates:
+    - name: main
+      steps:
+        - - name: dicom-converter
+            template: dicom-converter
+        - - name: fastsurfer
+            template: fastsurfer
+
+    # DICOM to NIFTI converter
+    - name: dicom-converter
+      inputs:
+        artifacts:
+          - name: images
+            path: /tmp/s3 # TODO
+            s3:
+              key: inputs/
+      container:
+        image: busybox # TODO
+        commdand: [sh, -c]
+        args:
+          - |
+            echo "yo WTF is going on"
+      outputs:
+        artifacts:
+          - name: nifti-images
+            path: /tmp/nifti-images # TODO
+
+    # FastSurfer 
+    - name: fastsurfer
+      inputs:
+        artifacts:
+          - name: nifti-images
+            path: /tmp/nifti-images # TODO
+      nodeSelector:
+        kite-ference.ikim.nrw/dgx: 'true'
+      container:
+        image: deepmi/fastsurfer:gpu-v2.2.0
+        args: [] # TODO
+        resources:
+          limits:
+            cpu: '8'
+            memory: 16Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '8'
+            memory: 16Gi
+            nvidia.com/gpu: '1'
+        volumeMounts:
+          - name: fastsurfer-license-pv
+            mountPath: /fs_license
+            readOnly: true
+      outputs:
+        artifacts:
+          - name: fastsurfer-output
+            path: /tmp/fastsurfer-output # TODO
+            s3:
+              key: outputs/{{workflow.uid}}/fastsurfer-output.tgz

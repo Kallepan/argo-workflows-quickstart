@@ -1,0 +1,6 @@
+# Values for argo-workflows
+controller:
+  workflowNamespaces:
+    - argo
+    - argo-events
+    - kite-ference
