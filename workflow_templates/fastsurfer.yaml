@@ -2,7 +2,6 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fastsurfer-s3
-  namespace: kite-ference
 data:
   v1-s3-artifact-repository: |
     s3:
@@ -23,11 +22,10 @@ apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
   name: fastsurfer-pipeline
-  namespace: kite-ference
 spec:
   entrypoint: main
   artifactRepositoryRef:
-    name: fastsurfer-s3
+    configMap: fastsurfer-s3
     key: v1-s3-artifact-repository
   volumes:
     - name: fastsurfer-license-pv
@@ -40,37 +38,46 @@ spec:
             template: dicom-converter
         - - name: fastsurfer
             template: fastsurfer
+            arguments:
+              artifacts:
+                - name: nifti-image
+                  from: "{{steps.dicom-nifti-converter.outputs.artifacts.nifti-image}}"
 
     # DICOM to NIFTI converter
     - name: dicom-converter
       inputs:
         artifacts:
           - name: images
-            path: /tmp/s3 # TODO
+            path: /data
             s3:
-              key: inputs/
+              key: inputs
       container:
-        image: busybox # TODO
-        commdand: [sh, -c]
-        args:
-          - |
-            echo "yo WTF is going on"
+        image: kallepan/dicom-nifti-converter:0.0.1
       outputs:
         artifacts:
-          - name: nifti-images
-            path: /tmp/nifti-images # TODO
+          - name: nifti-image
+            path: /output
 
     # FastSurfer 
     - name: fastsurfer
       inputs:
         artifacts:
-          - name: nifti-images
-            path: /tmp/nifti-images # TODO
+          - name: nifti-image
+            path: /data
       nodeSelector:
         kite-ference.ikim.nrw/dgx: 'true'
       container:
         image: deepmi/fastsurfer:gpu-v2.2.0
-        args: [] # TODO
+        args:
+          - "--sd"
+          - "/output"
+          - "--sid"
+          - "subjectX"
+          - "--t1"
+          - "/data"
+          - "--seg_only"
+          - "--parallel"
+          - "--allow_root"
         resources:
           limits:
             cpu: '8'
@@ -86,7 +93,7 @@ spec:
             readOnly: true
       outputs:
         artifacts:
-          - name: fastsurfer-output
-            path: /tmp/fastsurfer-output # TODO
+          - name: output
+            path: /output
             s3:
-              key: outputs/{{workflow.uid}}/fastsurfer-output.tgz
+              key: outputs/{{workflow.uid}}/output.tgz
