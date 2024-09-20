@@ -1,7 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fastsurfer-s3
+  name: artifact-repositories
+  namespace: kite-ference
+  annotations:
+    workflows.argoproj.io/default-artifact-repository: v1-s3-artifact-repository
 data:
   v1-s3-artifact-repository: |
     s3:
@@ -22,20 +25,22 @@ apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
   name: fastsurfer-pipeline
+  namespace: kite-ference
 spec:
   entrypoint: main
-  artifactRepositoryRef:
-    configMap: fastsurfer-s3
-    key: v1-s3-artifact-repository
   volumes:
     - name: fastsurfer-license-pv
       secret:
         secretName: fastsurfer-license
+  arguments:
+    parameters:
+      - name: caseID
+        value: "subjectX"
   templates:
     - name: main
       steps:
-        - - name: dicom-converter
-            template: dicom-converter
+        - - name: dicom-nifti-converter
+            template: dicom-nifti-converter
         - - name: fastsurfer
             template: fastsurfer
             arguments:
@@ -44,15 +49,19 @@ spec:
                   from: "{{steps.dicom-nifti-converter.outputs.artifacts.nifti-image}}"
 
     # DICOM to NIFTI converter
-    - name: dicom-converter
+    - name: dicom-nifti-converter
       inputs:
         artifacts:
           - name: images
             path: /data
             s3:
-              key: inputs
+              key: test_data/dicom
       container:
         image: kallepan/dicom-nifti-converter:0.0.1
+
+        env:
+          - name: OUTPUT_FILE_NAME
+            value: "{{workflow.parameters.caseID}}"
       outputs:
         artifacts:
           - name: nifti-image
@@ -72,11 +81,15 @@ spec:
           - "--sd"
           - "/output"
           - "--sid"
-          - "subjectX"
+          - "{{workflow.parameters.caseID}}"
           - "--t1"
-          - "/data"
+          - "/data/{{workflow.parameters.caseID}}.nii.gz"
           - "--seg_only"
           - "--parallel"
+          - "--threads"
+          - "16"
+          - "--batch"
+          - "32"
           - "--allow_root"
         resources:
           limits:
